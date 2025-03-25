@@ -1,0 +1,78 @@
+from flask import Flask, render_template, request, redirect, url_for
+from flask_sqlalchemy import SQLAlchemy
+from datetime import datetime
+
+app = Flask(__name__)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///records.db'
+db = SQLAlchemy(app)
+
+class Record(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(100), nullable=False)
+    content = db.Column(db.Text, nullable=False)
+    age = db.Column(db.Integer, nullable=False)
+    gender = db.Column(db.String(20), nullable=False)
+    date_created = db.Column(db.DateTime, default=datetime.utcnow)
+
+with app.app_context():
+    db.create_all()
+
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    ip_address = request.remote_addr
+    print(f"Access from IP: {ip_address}")
+
+    if request.method == 'POST':
+        title = request.form['title']
+        content = request.form['content']
+        age = request.form['age']
+        gender = request.form['gender']
+        new_record = Record(title=title, content=content, age=age, gender=gender)
+        db.session.add(new_record)
+        db.session.commit()
+        return "OK"
+    records = Record.query.order_by(Record.date_created.desc()).all()
+    return render_template('index.html', records=records)
+
+@app.route('/get_records')
+def get_records():
+    records = Record.query.order_by(Record.date_created.desc()).all()
+    return [{
+        'id': record.id,
+        'title': record.title,
+        'content': record.content,
+        'age': record.age,
+        'gender': record.gender,
+        'date_created': record.date_created.strftime('%Y-%m-%d %H:%M:%S')
+    } for record in records]
+
+@app.route('/delete/<int:id>')
+def delete(id):
+    ip_address = request.remote_addr
+    print(f"Delete request from IP: {ip_address}")
+    record = Record.query.get_or_404(id)
+    db.session.delete(record)
+    db.session.commit()
+    return redirect('/')
+
+@app.route('/export')
+def export():
+    records = Record.query.all()
+    output = ""
+    for record in records:
+        output += f"Title: {record.title}\n"
+        output += f"Age: {record.age}\n"
+        output += f"Gender: {record.gender}\n"
+        output += f"Content: {record.content}\n"
+        output += f"Date: {record.date_created}\n"
+        output += "-------------------\n"
+
+    from flask import Response
+    return Response(
+        output,
+        mimetype="text/plain",
+        headers={"Content-Disposition": "attachment;filename=records.txt"}
+    )
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=3000)
